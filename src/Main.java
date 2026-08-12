@@ -1,5 +1,3 @@
-
-
 import java.awt.BorderLayout;
 import java.awt.Color;
 import java.awt.Font;
@@ -14,13 +12,19 @@ import javax.sound.midi.MidiSystem;
 import javax.sound.midi.Receiver;
 import javax.sound.midi.ShortMessage;
 import javax.swing.JFrame;
+import javax.swing.JScrollPane;
 import javax.swing.JTextArea;
 import javax.swing.SwingUtilities;
 
 public class Main extends JFrame {
     private static final long serialVersionUID = 1L;
     private JTextArea textArea = null;
-    private Map<Integer, Integer> keyMap = null; // String ��� Integer(KeyCode) ���
+    
+    // VirtualPiano normal keys (white keys / default notes)
+    private Map<Integer, Integer> normalKeyMap = new HashMap<>();
+    // VirtualPiano shifted keys (black keys / sharp notes)
+    private Map<Integer, Integer> shiftKeyMap = new HashMap<>();
+    
     private MidiDevice outDevice = null;
     private Receiver receiver = null;
     private String targetPortName = "loopMIDI Port";
@@ -34,7 +38,7 @@ public class Main extends JFrame {
 
     public Main() {
         initMidiPort();
-        setKeyMap(); // 
+        setVirtualPianoKeyMap();
         setTextArea();
         setFrame();
         updateStatus();
@@ -55,39 +59,102 @@ public class Main extends JFrame {
                     }
                 }
             }
-        } catch (Exception e) { e.printStackTrace(); }
+        } catch (Exception e) { 
+            e.printStackTrace(); 
+        }
     }
 
-    private void setKeyMap() {
-        keyMap = new HashMap<>();
-        // �������� ���� KeyEvent ����� ����Ͽ� ���� Ű ��ġ�� �����մϴ�.
-        // --- �ϴ� ���̾� ---
-        keyMap.put(KeyEvent.VK_A, 44); keyMap.put(KeyEvent.VK_Z, 45); 
-        keyMap.put(KeyEvent.VK_S, 46); keyMap.put(KeyEvent.VK_X, 47);
-        keyMap.put(KeyEvent.VK_C, 48); keyMap.put(KeyEvent.VK_F, 49); 
-        keyMap.put(KeyEvent.VK_V, 50); keyMap.put(KeyEvent.VK_G, 51);
-        keyMap.put(KeyEvent.VK_B, 52); keyMap.put(KeyEvent.VK_N, 53); 
-        keyMap.put(KeyEvent.VK_J, 54); keyMap.put(KeyEvent.VK_M, 55);
-        keyMap.put(KeyEvent.VK_K, 56); keyMap.put(KeyEvent.VK_COMMA, 57); 
-        keyMap.put(KeyEvent.VK_L, 58); keyMap.put(KeyEvent.VK_PERIOD, 59);
-        keyMap.put(KeyEvent.VK_SLASH, 60); keyMap.put(KeyEvent.VK_QUOTE, 61);
+    private void setVirtualPianoKeyMap() {
+        // --- VirtualPiano.net Standard 61-Key Mapping (MIDI Note 36 ~ 96) ---
 
-        // --- ��� ���̾� (����Ű ��) ---
-        keyMap.put(KeyEvent.VK_1, 56); keyMap.put(KeyEvent.VK_Q, 57);
-        keyMap.put(KeyEvent.VK_2, 58); keyMap.put(KeyEvent.VK_W, 59);
-        keyMap.put(KeyEvent.VK_E, 60); keyMap.put(KeyEvent.VK_4, 61);
-        keyMap.put(KeyEvent.VK_R, 62); keyMap.put(KeyEvent.VK_5, 63);
-        keyMap.put(KeyEvent.VK_T, 64); keyMap.put(KeyEvent.VK_Y, 65);
-        keyMap.put(KeyEvent.VK_7, 66); keyMap.put(KeyEvent.VK_U, 67);
-        keyMap.put(KeyEvent.VK_8, 68); keyMap.put(KeyEvent.VK_I, 69);
-        keyMap.put(KeyEvent.VK_9, 70); keyMap.put(KeyEvent.VK_O, 71);
-        keyMap.put(KeyEvent.VK_P, 72); keyMap.put(KeyEvent.VK_MINUS, 73);
-        keyMap.put(KeyEvent.VK_OPEN_BRACKET, 74); keyMap.put(KeyEvent.VK_EQUALS, 75);
-        keyMap.put(KeyEvent.VK_CLOSE_BRACKET, 76);
+        // Octave 1 (C2 ~ B2 : MIDI 36 ~ 47)
+        normalKeyMap.put(KeyEvent.VK_1, 36); // 1 = C2
+        shiftKeyMap.put(KeyEvent.VK_1, 37);  // ! = C#2
+        normalKeyMap.put(KeyEvent.VK_2, 38); // 2 = D2
+        shiftKeyMap.put(KeyEvent.VK_2, 39);  // @ = D#2
+        normalKeyMap.put(KeyEvent.VK_3, 40); // 3 = E2
+        normalKeyMap.put(KeyEvent.VK_4, 41); // 4 = F2
+        shiftKeyMap.put(KeyEvent.VK_4, 42);  // $ = F#2
+        normalKeyMap.put(KeyEvent.VK_5, 43); // 5 = G2
+        shiftKeyMap.put(KeyEvent.VK_5, 44);  // % = G#2
+        normalKeyMap.put(KeyEvent.VK_6, 45); // 6 = A2
+        shiftKeyMap.put(KeyEvent.VK_6, 46);  // ^ = A#2
+        normalKeyMap.put(KeyEvent.VK_7, 47); // 7 = B2
+
+        // Octave 2 (C3 ~ B3 : MIDI 48 ~ 59)
+        normalKeyMap.put(KeyEvent.VK_8, 48); // 8 = C3
+        shiftKeyMap.put(KeyEvent.VK_8, 49);  // * = C#3
+        normalKeyMap.put(KeyEvent.VK_9, 50); // 9 = D3
+        shiftKeyMap.put(KeyEvent.VK_9, 51);  // ( = D#3
+        normalKeyMap.put(KeyEvent.VK_0, 52); // 0 = E3
+        normalKeyMap.put(KeyEvent.VK_Q, 53); // q = F3
+        shiftKeyMap.put(KeyEvent.VK_Q, 54);  // Q = F#3
+        normalKeyMap.put(KeyEvent.VK_W, 55); // w = G3
+        shiftKeyMap.put(KeyEvent.VK_W, 56);  // W = G#3
+        normalKeyMap.put(KeyEvent.VK_E, 57); // e = A3
+        shiftKeyMap.put(KeyEvent.VK_E, 58);  // E = A#3
+        normalKeyMap.put(KeyEvent.VK_R, 59); // r = B3
+
+        // Octave 3 (C4 ~ B4 : MIDI 60 ~ 71) - Middle C
+        normalKeyMap.put(KeyEvent.VK_T, 60); // t = C4 (Middle C)
+        shiftKeyMap.put(KeyEvent.VK_T, 61);  // T = C#4
+        normalKeyMap.put(KeyEvent.VK_Y, 62); // y = D4
+        shiftKeyMap.put(KeyEvent.VK_Y, 63);  // Y = D#4
+        normalKeyMap.put(KeyEvent.VK_U, 64); // u = E4
+        normalKeyMap.put(KeyEvent.VK_I, 65); // i = F4
+        shiftKeyMap.put(KeyEvent.VK_I, 66);  // I = F#4
+        normalKeyMap.put(KeyEvent.VK_O, 67); // o = G4
+        shiftKeyMap.put(KeyEvent.VK_O, 68);  // O = G#4
+        normalKeyMap.put(KeyEvent.VK_P, 69); // p = A4
+        shiftKeyMap.put(KeyEvent.VK_P, 70);  // P = A#4
+        normalKeyMap.put(KeyEvent.VK_A, 71); // a = B4
+
+        // Octave 4 (C5 ~ B5 : MIDI 72 ~ 83)
+        normalKeyMap.put(KeyEvent.VK_S, 72); // s = C5
+        shiftKeyMap.put(KeyEvent.VK_S, 73);  // S = C#5
+        normalKeyMap.put(KeyEvent.VK_D, 74); // d = D5
+        shiftKeyMap.put(KeyEvent.VK_D, 75);  // D = D#5
+        normalKeyMap.put(KeyEvent.VK_F, 76); // f = E5
+        normalKeyMap.put(KeyEvent.VK_G, 77); // g = F5
+        shiftKeyMap.put(KeyEvent.VK_G, 78);  // G = F#5
+        normalKeyMap.put(KeyEvent.VK_H, 79); // h = G5
+        shiftKeyMap.put(KeyEvent.VK_H, 80);  // H = G#5
+        normalKeyMap.put(KeyEvent.VK_J, 81); // j = A5
+        shiftKeyMap.put(KeyEvent.VK_J, 82);  // J = A#5
+        normalKeyMap.put(KeyEvent.VK_K, 83); // k = B5
+
+        // Octave 5 (C6 ~ C7 : MIDI 84 ~ 96)
+        normalKeyMap.put(KeyEvent.VK_L, 84); // l = C6
+        shiftKeyMap.put(KeyEvent.VK_L, 85);  // L = C#6
+        normalKeyMap.put(KeyEvent.VK_Z, 86); // z = D6
+        shiftKeyMap.put(KeyEvent.VK_Z, 87);  // Z = D#6
+        normalKeyMap.put(KeyEvent.VK_X, 88); // x = E6
+        normalKeyMap.put(KeyEvent.VK_C, 89); // c = F6
+        shiftKeyMap.put(KeyEvent.VK_C, 90);  // C = F#6
+        normalKeyMap.put(KeyEvent.VK_V, 91); // v = G6
+        shiftKeyMap.put(KeyEvent.VK_V, 92);  // V = G#6
+        normalKeyMap.put(KeyEvent.VK_B, 93); // b = A6
+        shiftKeyMap.put(KeyEvent.VK_B, 94);  // B = A#6
+        normalKeyMap.put(KeyEvent.VK_N, 95); // n = B6
+        normalKeyMap.put(KeyEvent.VK_M, 96); // m = C7
     }
 
     private void setTextArea() {
         textArea = new JTextArea();
+        textArea.setText(
+            "=== VirtualPiano.net Keymap Controller ===\n\n" +
+            "Octave 1:  1 ! 2 @ 3 4 $ 5 % 6 ^ 7\n" +
+            "Octave 2:  8 * 9 ( 0 q Q w W e E r\n" +
+            "Octave 3:  t T y Y u i I o O p P a  (Middle C = t)\n" +
+            "Octave 4:  s S d D f g G h H j J k\n" +
+            "Octave 5:  l L z Z x c C v V b B n m\n\n" +
+            "Controls:\n" +
+            "- Hold Spacebar / Shift+Backspace: Toggle Sustain Pedal\n" +
+            "- Hold Shift + Key: Play Sharp (#) Notes\n\n" +
+            "Press keys to play..."
+        );
+        textArea.setEditable(false);
+
         textArea.addKeyListener(new KeyAdapter() {
             @Override
             public void keyPressed(KeyEvent e) {
@@ -115,19 +182,22 @@ public class Main extends JFrame {
                     return;
                 }
 
-                // ���� Ű���� �ڵ�(keyCode)�� ��Ʈ�� ã��
-                Integer baseNote = keyMap.get(keyCode);
-                if (baseNote != null) {
-                    // �̹� �����ִ� Ű��� �ߺ� ���� ����
-                    if (physicalKeyToMidi.containsKey(keyCode)) return;
+                // Prevent key repeat triggering multiple noteOn events
+                if (physicalKeyToMidi.containsKey(keyCode)) return;
 
-                    // Shift�� �������� ���� +12(1��Ÿ��) ����
-                    int finalNote = baseNote + (isShiftPressed ? 12 : 0);
-                    
-                    if (finalNote >= 0 && finalNote <= 127) {
-                        physicalKeyToMidi.put(keyCode, finalNote);
-                        noteON(finalNote);
-                    }
+                // Virtual Piano lookup logic:
+                // Shift down -> lookup sharp map first, fallback to normal map if no sharp exists
+                Integer note = null;
+                if (isShiftPressed) {
+                    note = shiftKeyMap.get(keyCode);
+                }
+                if (note == null) {
+                    note = normalKeyMap.get(keyCode);
+                }
+
+                if (note != null && note >= 0 && note <= 127) {
+                    physicalKeyToMidi.put(keyCode, note);
+                    noteON(note);
                 }
             }
 
@@ -148,7 +218,6 @@ public class Main extends JFrame {
                     return;
                 }
 
-                // ���� �� �����ߴ� finalNote�� �����ͼ� ��
                 Integer playedNote = physicalKeyToMidi.remove(keyCode);
                 if (playedNote != null) {
                     noteOFF(playedNote);
@@ -168,7 +237,9 @@ public class Main extends JFrame {
                 msg.setMessage(ShortMessage.CONTROL_CHANGE, 0, 64, isOn ? 127 : 0);
                 receiver.send(msg, -1);
             }
-        } catch (Exception e) { e.printStackTrace(); }
+        } catch (Exception e) { 
+            e.printStackTrace(); 
+        }
     }
 
     private void noteON(int noteNumber) {
@@ -178,39 +249,53 @@ public class Main extends JFrame {
                 msg.setMessage(ShortMessage.NOTE_ON, 0, noteNumber, 93);
                 receiver.send(msg, -1);
             }
-        } catch (Exception e) { e.printStackTrace(); }
+        } catch (Exception e) { 
+            e.printStackTrace(); 
+        }
     }
 
     private void noteOFF(int noteNumber) {
         new Thread(() -> {
-            try { Thread.sleep(releaseTime); } catch (InterruptedException e) {}
+            try { 
+                Thread.sleep(releaseTime); 
+            } catch (InterruptedException e) {}
             try {
                 if (receiver != null) {
                     ShortMessage msg = new ShortMessage();
                     msg.setMessage(ShortMessage.NOTE_OFF, 0, noteNumber, 93);
                     receiver.send(msg, -1);
                 }
-            } catch (Exception e) { e.printStackTrace(); }
+            } catch (Exception e) { 
+                e.printStackTrace(); 
+            }
         }).start();
     }
 
     private void updateStatus() {
         String sustain = (isSustainToggled || isSpacePressed) ? "ON" : "OFF";
-        String octave = isShiftPressed ? "+1 Octave" : "Normal";
-        SwingUtilities.invokeLater(() -> setTitle("MIDI Controller - Sustain: " + sustain + " | Octave: " + octave));
+        String shiftState = isShiftPressed ? "Active (Sharps #)" : "Inactive";
+        SwingUtilities.invokeLater(() -> 
+            setTitle("Virtual Piano MIDI Controller - Sustain: " + sustain + " | Shift: " + shiftState)
+        );
     }
 
     private void setFrame() {
         setLayout(new BorderLayout());
-        add(textArea, BorderLayout.CENTER);
-        textArea.setBackground(Color.black);
-        textArea.setForeground(Color.white);
-        textArea.setFont(new Font("Consolas", Font.PLAIN, 24));
+        JScrollPane scrollPane = new JScrollPane(textArea);
+        add(scrollPane, BorderLayout.CENTER);
+        
+        textArea.setBackground(new Color(24, 24, 27));
+        textArea.setForeground(new Color(244, 244, 245));
+        textArea.setCaretColor(Color.WHITE);
+        textArea.setFont(new Font("Consolas", Font.PLAIN, 18));
+        
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-        setSize(900, 500);
+        setSize(950, 550);
         setLocationRelativeTo(null);
         setVisible(true);
     }
 
-    public static void main(String[] args) { new Main(); }
+    public static void main(String[] args) { 
+        SwingUtilities.invokeLater(() -> new Main()); 
+    }
 }
