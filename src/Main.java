@@ -36,6 +36,10 @@ public class Main extends JFrame {
     private boolean isShiftPressed = false;
     private boolean isSustainToggled = false;
 
+    // --- Transpose Settings ---
+    private int transposeAmount = 0; // 반음 단위 (예: +2 = D key, -1 = B key)
+    private static final int OCTAVE_STEP = 12;
+
     public Main() {
         initMidiPort();
         setVirtualPianoKeyMap();
@@ -150,7 +154,10 @@ public class Main extends JFrame {
             "Octave 5:  l L z Z x c C v V b B n m\n\n" +
             "Controls:\n" +
             "- Hold Spacebar / Shift+Backspace: Toggle Sustain Pedal\n" +
-            "- Hold Shift + Key: Play Sharp (#) Notes\n\n" +
+            "- Hold Shift + Key: Play Sharp (#) Notes\n" +
+            "- Up / Down Arrow: Transpose ±1 Semitone\n" +
+            "- Page Up / Page Down: Transpose ±1 Octave\n" +
+            "- Home Key: Reset Transpose to 0\n\n" +
             "Press keys to play..."
         );
         textArea.setEditable(false);
@@ -182,6 +189,33 @@ public class Main extends JFrame {
                     return;
                 }
 
+                // --- Transpose Controls ---
+                if (keyCode == KeyEvent.VK_UP) {
+                    transposeAmount++;
+                    updateStatus();
+                    return;
+                }
+                if (keyCode == KeyEvent.VK_DOWN) {
+                    transposeAmount--;
+                    updateStatus();
+                    return;
+                }
+                if (keyCode == KeyEvent.VK_PAGE_UP) {
+                    transposeAmount += OCTAVE_STEP;
+                    updateStatus();
+                    return;
+                }
+                if (keyCode == KeyEvent.VK_PAGE_DOWN) {
+                    transposeAmount -= OCTAVE_STEP;
+                    updateStatus();
+                    return;
+                }
+                if (keyCode == KeyEvent.VK_HOME) {
+                    transposeAmount = 0;
+                    updateStatus();
+                    return;
+                }
+
                 // Prevent key repeat triggering multiple noteOn events
                 if (physicalKeyToMidi.containsKey(keyCode)) return;
 
@@ -195,9 +229,15 @@ public class Main extends JFrame {
                     note = normalKeyMap.get(keyCode);
                 }
 
-                if (note != null && note >= 0 && note <= 127) {
-                    physicalKeyToMidi.put(keyCode, note);
-                    noteON(note);
+                if (note != null) {
+                    // Apply Transpose Offset
+                    int transposedNote = note + transposeAmount;
+
+                    // MIDI standard note range protection (0 ~ 127)
+                    if (transposedNote >= 0 && transposedNote <= 127) {
+                        physicalKeyToMidi.put(keyCode, transposedNote);
+                        noteON(transposedNote);
+                    }
                 }
             }
 
@@ -274,8 +314,10 @@ public class Main extends JFrame {
     private void updateStatus() {
         String sustain = (isSustainToggled || isSpacePressed) ? "ON" : "OFF";
         String shiftState = isShiftPressed ? "Active (Sharps #)" : "Inactive";
+        String transposeStr = (transposeAmount >= 0 ? "+" : "") + transposeAmount;
+
         SwingUtilities.invokeLater(() -> 
-            setTitle("Virtual Piano MIDI Controller - Sustain: " + sustain + " | Shift: " + shiftState)
+            setTitle("Virtual Piano MIDI Controller - Transpose: " + transposeStr + " | Sustain: " + sustain + " | Shift: " + shiftState)
         );
     }
 
