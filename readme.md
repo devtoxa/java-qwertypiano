@@ -80,4 +80,4 @@ Java Swing과 Java Sound API(MIDI)를 기반으로 제작된 가상 피아노 MI
 - **Java SE 8** 이상 (Swing & javax.sound.midi 활용)
 - **가상 MIDI 드라이버** (선택 사항, 추천: [loopMIDI](https://www.tobias-erichsen.de/software/loopmidi.html))
   - DAW(예: Ableton, FL Studio, Cubase 등)나 가상 악기(VSTi)로 MIDI 신호를 보낼 때 필요합니다.
-```
+
