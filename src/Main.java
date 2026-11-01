@@ -1,4 +1,5 @@
 
+
 import java.awt.BorderLayout;
 import java.awt.Color;
 import java.awt.Dimension;
@@ -46,10 +47,14 @@ public class Main extends JFrame {
     private Map<Integer, Integer> physicalKeyToMidi = new ConcurrentHashMap<>();
     private Set<Integer> activeMidiNotes = ConcurrentHashMap.newKeySet();
 
-    private int releaseTime = 100; 
+    private volatile int releaseTime = 100; // Sustain Release Time (ms)
     private boolean isSpacePressed = false;
     private boolean isShiftPressed = false;
     private boolean isSustainToggled = false;
+
+    // --- Reverb Settings ---
+    private boolean isReverbOn = false;
+    private int reverbDepth = 64; // 범위: 0 ~ 127 (기본값: 64)
 
     // --- Transpose Settings & Limits ---
     private int transposeAmount = 0; // 반음 단위
@@ -146,6 +151,7 @@ public class Main extends JFrame {
             outDevice.open();
             receiver = outDevice.getReceiver();
             sendSustainCommand(false);
+            sendReverbCommand();
         } catch (Exception e) {
             e.printStackTrace();
             outDevice = null;
@@ -243,7 +249,10 @@ public class Main extends JFrame {
             "- Hold Shift + Key: Play Sharp (#) Notes\n" +
             "- Up / Down Arrow: Transpose ±1 Semitone\n" +
             "- Page Up / Page Down: Transpose ±1 Octave\n" +
-            "- Home Key: Reset Transpose to 0\n\n" +
+            "- Home Key: Reset Transpose to 0\n" +
+            "- Shift + \\ (|): Reverb On/Off Toggle\n" +
+            "- [ / ]: Adjust Reverb Depth (- / +10, Shift: - / +1)\n" +
+            "- - / + (=): Adjust Sustain Release Time (- / +50ms, Shift: - / +10ms)\n\n" +
             "Press keys to play..."
         );
         textArea.setEditable(false);
@@ -255,6 +264,44 @@ public class Main extends JFrame {
 
                 if (keyCode == KeyEvent.VK_SHIFT) {
                     isShiftPressed = true;
+                    updateStatus();
+                    return;
+                }
+
+                // --- Reverb Toggle (Shift + \) ---
+                if (keyCode == KeyEvent.VK_BACK_SLASH && isShiftPressed) {
+                    isReverbOn = !isReverbOn;
+                    sendReverbCommand();
+                    updateStatus();
+                    return;
+                }
+
+                // --- Reverb Depth Controls ([ / ]) ---
+                if (keyCode == KeyEvent.VK_OPEN_BRACKET) {
+                    int step = isShiftPressed ? 1 : 10;
+                    reverbDepth = Math.max(0, reverbDepth - step);
+                    sendReverbCommand();
+                    updateStatus();
+                    return;
+                }
+                if (keyCode == KeyEvent.VK_CLOSE_BRACKET) {
+                    int step = isShiftPressed ? 1 : 10;
+                    reverbDepth = Math.min(127, reverbDepth + step);
+                    sendReverbCommand();
+                    updateStatus();
+                    return;
+                }
+
+                // --- Sustain Time Controls (- / +) ---
+                if (keyCode == KeyEvent.VK_MINUS) {
+                    int step = isShiftPressed ? 10 : 50;
+                    releaseTime = Math.max(0, releaseTime - step);
+                    updateStatus();
+                    return;
+                }
+                if (keyCode == KeyEvent.VK_EQUALS) { // 키보드의 + / = 키
+                    int step = isShiftPressed ? 10 : 50;
+                    releaseTime = Math.min(2000, releaseTime + step);
                     updateStatus();
                     return;
                 }
@@ -372,6 +419,19 @@ public class Main extends JFrame {
         }
     }
 
+    private void sendReverbCommand() {
+        try {
+            if (receiver != null) {
+                ShortMessage msg = new ShortMessage();
+                // CC #91: Effect 1 Depth (Reverb Send Level)
+                msg.setMessage(ShortMessage.CONTROL_CHANGE, 0, 91, isReverbOn ? reverbDepth : 0);
+                receiver.send(msg, -1);
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
     private void noteON(int noteNumber) {
         try {
             if (receiver != null) {
@@ -405,10 +465,12 @@ public class Main extends JFrame {
         String sustain = (isSustainToggled || isSpacePressed) ? "ON" : "OFF";
         String shiftState = isShiftPressed ? "Active (Sharps #)" : "Inactive";
         String transposeStr = (transposeAmount >= 0 ? "+" : "") + transposeAmount;
+        String reverbStr = isReverbOn ? "ON (" + reverbDepth + ")" : "OFF";
         String devName = (outDevice != null) ? outDevice.getDeviceInfo().getName() : "None";
 
         SwingUtilities.invokeLater(() -> 
-            setTitle("Virtual Piano MIDI Controller - Device: [" + devName + "] | Transpose: " + transposeStr + " | Sustain: " + sustain + " | Shift: " + shiftState)
+            setTitle("Virtual Piano MIDI Controller - Device: [" + devName + "] | Transpose: " + transposeStr + 
+                     " | Sustain: " + sustain + " (" + releaseTime + "ms) | Reverb: " + reverbStr + " | Shift: " + shiftState)
         );
     }
 

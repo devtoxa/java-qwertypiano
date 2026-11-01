@@ -1,15 +1,20 @@
 package prev;
+
 import java.awt.BorderLayout;
 import java.awt.Color;
 import java.awt.Dimension;
 import java.awt.FlowLayout;
 import java.awt.Font;
+import java.awt.Graphics;
+import java.awt.Graphics2D;
+import java.awt.RenderingHints;
 import java.awt.event.KeyAdapter;
 import java.awt.event.KeyEvent;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 import javax.sound.midi.MidiDevice;
@@ -28,6 +33,7 @@ import javax.swing.SwingUtilities;
 public class Main extends JFrame {
     private static final long serialVersionUID = 1L;
     private JTextArea textArea = null;
+    private PianoPanel pianoPanel = null;
     
     // VirtualPiano normal keys (white keys / default notes)
     private Map<Integer, Integer> normalKeyMap = new HashMap<>();
@@ -39,21 +45,30 @@ public class Main extends JFrame {
     private String targetPortName = "loopMIDI Port";
 
     private Map<Integer, Integer> physicalKeyToMidi = new ConcurrentHashMap<>();
+    private Set<Integer> activeMidiNotes = ConcurrentHashMap.newKeySet();
 
     private int releaseTime = 100; 
     private boolean isSpacePressed = false;
     private boolean isShiftPressed = false;
     private boolean isSustainToggled = false;
 
-    // --- Transpose Settings ---
+    // --- Transpose Settings & Limits ---
     private int transposeAmount = 0; // 반음 단위
     private static final int OCTAVE_STEP = 12;
+
+    // 88건반(21 ~ 108) 및 VirtualPiano 기본범위(36 ~ 96) 기준 한계값 설정
+    private static final int PIANO_START_NOTE = 21; // A0
+    private static final int PIANO_END_NOTE = 108;  // C8
+    private static final int BASE_MIN_NOTE = 36;    // C2
+    private static final int BASE_MAX_NOTE = 96;    // C7
+
+    private static final int MIN_TRANSPOSE = PIANO_START_NOTE - BASE_MIN_NOTE; // -15
+    private static final int MAX_TRANSPOSE = PIANO_END_NOTE - BASE_MAX_NOTE;   // +12
 
     // --- UI Components for MIDI Selection ---
     private JComboBox<MidiDeviceItem> midiDeviceComboBox;
     private List<MidiDevice.Info> availableMidiInfos = new ArrayList<>();
 
-    // JComboBox에 표시할 Wrapping 클래스
     private static class MidiDeviceItem {
         private final MidiDevice.Info info;
 
@@ -75,8 +90,9 @@ public class Main extends JFrame {
     public Main() {
         setVirtualPianoKeyMap();
         setTextArea();
+        pianoPanel = new PianoPanel();
         setFrame();
-        refreshMidiDevices(); // MIDI 장치 목록 구성 및 기본 장치 자동 연결
+        refreshMidiDevices();
         updateStatus();
     }
 
@@ -92,13 +108,11 @@ public class Main extends JFrame {
         for (MidiDevice.Info info : infos) {
             try {
                 MidiDevice dev = MidiSystem.getMidiDevice(info);
-                // 출력(Receiver)을 지원하는 장치만 필터링
                 if (dev.getMaxReceivers() != 0) {
                     availableMidiInfos.add(info);
                     MidiDeviceItem item = new MidiDeviceItem(info);
                     midiDeviceComboBox.addItem(item);
 
-                    // loopMIDI Port 등 기본 타겟 장치가 있으면 자동 선택 인덱스 저장
                     if (info.getName().contains(targetPortName)) {
                         autoSelectIndex = midiDeviceComboBox.getItemCount() - 1;
                     }
@@ -109,12 +123,11 @@ public class Main extends JFrame {
         if (autoSelectIndex != -1) {
             midiDeviceComboBox.setSelectedIndex(autoSelectIndex);
         } else if (midiDeviceComboBox.getItemCount() > 1) {
-            midiDeviceComboBox.setSelectedIndex(1); // 기본 1번 장치 선택
+            midiDeviceComboBox.setSelectedIndex(1);
         }
     }
 
     private synchronized void switchMidiDevice(MidiDevice.Info info) {
-        // 기존 장치 해제
         if (receiver != null) {
             try { receiver.close(); } catch (Exception ignored) {}
             receiver = null;
@@ -143,7 +156,7 @@ public class Main extends JFrame {
     }
 
     private void setVirtualPianoKeyMap() {
-        // --- VirtualPiano.net Standard 61-Key Mapping (MIDI Note 36 ~ 96) ---
+        // --- VirtualPiano.net Standard 61-Key Base Mapping (MIDI Note 36 ~ 96) ---
 
         // Octave 1 (C2 ~ B2 : MIDI 36 ~ 47)
         normalKeyMap.put(KeyEvent.VK_1, 36); // 1 = C2
@@ -263,37 +276,40 @@ public class Main extends JFrame {
                     return;
                 }
 
-                // --- Transpose Controls ---
+                // --- Transpose Controls (Bounded between MIN_TRANSPOSE and MAX_TRANSPOSE) ---
                 if (keyCode == KeyEvent.VK_UP) {
-                    transposeAmount++;
+                    transposeAmount = Math.min(transposeAmount + 1, MAX_TRANSPOSE);
                     updateStatus();
+                    if (pianoPanel != null) pianoPanel.repaint();
                     return;
                 }
                 if (keyCode == KeyEvent.VK_DOWN) {
-                    transposeAmount--;
+                    transposeAmount = Math.max(transposeAmount - 1, MIN_TRANSPOSE);
                     updateStatus();
+                    if (pianoPanel != null) pianoPanel.repaint();
                     return;
                 }
                 if (keyCode == KeyEvent.VK_PAGE_UP) {
-                    transposeAmount += OCTAVE_STEP;
+                    transposeAmount = Math.min(transposeAmount + OCTAVE_STEP, MAX_TRANSPOSE);
                     updateStatus();
+                    if (pianoPanel != null) pianoPanel.repaint();
                     return;
                 }
                 if (keyCode == KeyEvent.VK_PAGE_DOWN) {
-                    transposeAmount -= OCTAVE_STEP;
+                    transposeAmount = Math.max(transposeAmount - OCTAVE_STEP, MIN_TRANSPOSE);
                     updateStatus();
+                    if (pianoPanel != null) pianoPanel.repaint();
                     return;
                 }
                 if (keyCode == KeyEvent.VK_HOME) {
                     transposeAmount = 0;
                     updateStatus();
+                    if (pianoPanel != null) pianoPanel.repaint();
                     return;
                 }
 
-                // Prevent key repeat triggering multiple noteOn events
                 if (physicalKeyToMidi.containsKey(keyCode)) return;
 
-                // Virtual Piano lookup logic:
                 Integer note = null;
                 if (isShiftPressed) {
                     note = shiftKeyMap.get(keyCode);
@@ -305,9 +321,11 @@ public class Main extends JFrame {
                 if (note != null) {
                     int transposedNote = note + transposeAmount;
 
-                    if (transposedNote >= 0 && transposedNote <= 127) {
+                    if (transposedNote >= PIANO_START_NOTE && transposedNote <= PIANO_END_NOTE) {
                         physicalKeyToMidi.put(keyCode, transposedNote);
+                        activeMidiNotes.add(transposedNote);
                         noteON(transposedNote);
+                        if (pianoPanel != null) pianoPanel.repaint();
                     }
                 }
             }
@@ -331,7 +349,9 @@ public class Main extends JFrame {
 
                 Integer playedNote = physicalKeyToMidi.remove(keyCode);
                 if (playedNote != null) {
+                    activeMidiNotes.remove(playedNote);
                     noteOFF(playedNote);
+                    if (pianoPanel != null) pianoPanel.repaint();
                 }
             }
         });
@@ -393,6 +413,104 @@ public class Main extends JFrame {
         );
     }
 
+    // --- 88-Key Piano GUI Component (Dimmed Inactive Range) ---
+    private class PianoPanel extends JPanel {
+        private static final long serialVersionUID = 1L;
+
+        private final boolean[] isBlackKey = {
+            false, true, false, true, false, false, true, false, true, false, true, false
+        };
+
+        public PianoPanel() {
+            setPreferredSize(new Dimension(1100, 160));
+            setBackground(new Color(24, 24, 27));
+        }
+
+        @Override
+        protected void paintComponent(Graphics g) {
+            super.paintComponent(g);
+            Graphics2D g2 = (Graphics2D) g;
+            g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+
+            int totalWhiteKeys = 0;
+            for (int note = PIANO_START_NOTE; note <= PIANO_END_NOTE; note++) {
+                if (!isBlackKey[note % 12]) totalWhiteKeys++;
+            }
+
+            int panelWidth = getWidth();
+            int panelHeight = getHeight();
+            double whiteKeyWidth = (double) panelWidth / totalWhiteKeys;
+            double blackKeyWidth = whiteKeyWidth * 0.6;
+            int blackKeyHeight = (int) (panelHeight * 0.62);
+
+            // Bounded Playable Range Calculation
+            int playableMin = BASE_MIN_NOTE + transposeAmount;
+            int playableMax = BASE_MAX_NOTE + transposeAmount;
+
+            // 1. Render White Keys
+            double currentX = 0;
+            Map<Integer, Double> whiteKeyPositions = new HashMap<>();
+
+            for (int note = PIANO_START_NOTE; note <= PIANO_END_NOTE; note++) {
+                if (!isBlackKey[note % 12]) {
+                    whiteKeyPositions.put(note, currentX);
+                    int x = (int) Math.round(currentX);
+                    int w = (int) Math.round(currentX + whiteKeyWidth) - x;
+
+                    boolean isPlayable = (note >= playableMin && note <= playableMax);
+                    boolean isActive = activeMidiNotes.contains(note);
+
+                    if (isActive) {
+                        g2.setColor(new Color(249, 115, 22)); // 눌린 키: 주황색
+                    } else if (isPlayable) {
+                        g2.setColor(Color.WHITE); // 활성 영역 흰 건반: 밝은 흰색
+                    } else {
+                        g2.setColor(new Color(82, 82, 91)); // 비활성 영역 흰 건반: 어두운 회색 (Dimmed)
+                    }
+
+                    g2.fillRect(x, 0, w - 1, panelHeight - 1);
+                    g2.setColor(new Color(39, 39, 42));
+                    g2.drawRect(x, 0, w - 1, panelHeight - 1);
+
+                    // C 노트 라벨링 (C1 ~ C8)
+                    if (note % 12 == 0) {
+                        g2.setColor(isPlayable ? new Color(39, 39, 42) : new Color(161, 161, 170));
+                        g2.setFont(new Font("Consolas", Font.BOLD, 11));
+                        g2.drawString("C" + (note / 12 - 1), x + 2, panelHeight - 6);
+                    }
+
+                    currentX += whiteKeyWidth;
+                }
+            }
+
+            // 2. Render Black Keys
+            for (int note = PIANO_START_NOTE; note <= PIANO_END_NOTE; note++) {
+                if (isBlackKey[note % 12]) {
+                    Double prevWhiteX = whiteKeyPositions.get(note - 1);
+                    if (prevWhiteX != null) {
+                        int x = (int) Math.round(prevWhiteX + whiteKeyWidth - (blackKeyWidth / 2.0));
+                        int w = (int) Math.round(blackKeyWidth);
+
+                        boolean isPlayable = (note >= playableMin && note <= playableMax);
+                        boolean isActive = activeMidiNotes.contains(note);
+
+                        if (isActive) {
+                            g2.setColor(new Color(234, 88, 12)); // 눌린 키: 진한 주황색
+                        } else if (isPlayable) {
+                            g2.setColor(new Color(24, 24, 27)); // 활성 영역 검은 건반: 기본 검은색
+                        } else {
+                            g2.setColor(new Color(9, 9, 11)); // 비활성 영역 검은 건반: 짙은 밤색/검은색 (Dimmed)
+                        }
+
+                        g2.fillRect(x, 0, w, blackKeyHeight);
+                        g2.setColor(Color.BLACK);
+                        g2.drawRect(x, 0, w, blackKeyHeight);
+                    }
+                }
+            }
+        }
+    }
+
     private void setFrame() {
         setLayout(new BorderLayout());
 
@@ -406,14 +524,14 @@ public class Main extends JFrame {
 
         midiDeviceComboBox = new JComboBox<>();
         midiDeviceComboBox.setPreferredSize(new Dimension(380, 28));
-        midiDeviceComboBox.setFocusable(false); // 피아노 키 입력 포커스 유지를 위해 필수
+        midiDeviceComboBox.setFocusable(false);
 
         midiDeviceComboBox.addActionListener(e -> {
             MidiDeviceItem selectedItem = (MidiDeviceItem) midiDeviceComboBox.getSelectedItem();
             if (selectedItem != null) {
                 switchMidiDevice(selectedItem.getInfo());
             }
-            textArea.requestFocusInWindow(); // 입력 포커스를 JTextArea로 반환
+            textArea.requestFocusInWindow();
         });
 
         JButton refreshBtn = new JButton("Refresh");
@@ -438,12 +556,14 @@ public class Main extends JFrame {
         textArea.setCaretColor(Color.WHITE);
         textArea.setFont(new Font("Consolas", Font.PLAIN, 18));
         
+        // --- Bottom Piano Graphics Panel ---
+        add(pianoPanel, BorderLayout.SOUTH);
+
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-        setSize(1000, 600);
+        setSize(1150, 720);
         setLocationRelativeTo(null);
         setVisible(true);
 
-        // 실행 후 바로 키보드 연주가 가능하도록 Focus 설정
         SwingUtilities.invokeLater(() -> textArea.requestFocusInWindow());
     }
 
